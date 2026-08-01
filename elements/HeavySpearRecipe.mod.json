@@ -1,0 +1,49 @@
+{
+  "_fv": 85,
+  "_type": "recipe",
+  "definition": {
+    "recipeType": "Crafting",
+    "recipeRetstackSize": 1,
+    "group": "",
+    "unlockingItems": [],
+    "cookingBookCategory": "MISC",
+    "xpReward": 0.0,
+    "cookingTime": 200,
+    "craftingBookCategory": "EQUIPMENT",
+    "recipeShapeless": false,
+    "recipeSlots": [
+      {
+        "value": ""
+      },
+      {
+        "value": ""
+      },
+      {
+        "value": "Blocks.HEAVY_CORE"
+      },
+      {
+        "value": ""
+      },
+      {
+        "value": "Items.BREEZE_ROD"
+      },
+      {
+        "value": ""
+      },
+      {
+        "value": "Items.BREEZE_ROD"
+      },
+      {
+        "value": ""
+      },
+      {
+        "value": ""
+      }
+    ],
+    "recipeReturnStack": {
+      "value": "CUSTOM:HeavySpear"
+    },
+    "name": "heavy_spear_recipe",
+    "namespace": "mod"
+  }
+}

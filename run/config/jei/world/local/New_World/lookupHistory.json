@@ -1,0 +1,6 @@
+[
+  {"version":1},
+  {"ingredient":{"id":"heavyspear:heavy_spear"},"type":"item_stack","bookmarkType":"INGREDIENT"},
+  {"ingredient":{"id":"minecraft:mace"},"type":"item_stack","bookmarkType":"INGREDIENT"},
+  {"ingredient":{"id":"heavyspear:heavy_spear","components":{"minecraft:damage":12}},"type":"item_stack","bookmarkType":"INGREDIENT"}
+]

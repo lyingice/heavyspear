@@ -1,0 +1,74 @@
+{
+  "mod_elements": [
+    {
+      "name": "HeavySpear",
+      "type": "item",
+      "compiles": true,
+      "locked_code": true,
+      "registry_name": "heavy_spear",
+      "metadata": {
+        "files": [
+          "src/main/resources/assets/heavyspear/models/item/heavy_spear.json",
+          "src/main/java/net/minecraft/heavyspear/item/HeavySpearItem.java"
+        ]
+      }
+    },
+    {
+      "name": "HeavySpearRecipe",
+      "type": "recipe",
+      "compiles": true,
+      "locked_code": false,
+      "registry_name": "heavy_spear_recipe",
+      "metadata": {
+        "files": [
+          "src/main/resources/data/heavyspear/recipe/heavy_spear_recipe.json"
+        ]
+      }
+    }
+  ],
+  "variable_elements": [],
+  "sound_elements": [],
+  "tag_elements": {
+    "ITEMS:minecraft:enchantable/durability": [
+      "~CUSTOM:HeavySpear"
+    ]
+  },
+  "tab_element_order": {},
+  "language_map": {
+    "en_us": {
+      "item.heavyspear.heavy_spear": "Heavy Spear"
+    }
+  },
+  "metadata": {
+    "files": [
+      "src/main/java/net/minecraft/heavyspear/init/HeavyspearModItems.java",
+      "src/main/resources/pack.mcmeta",
+      "src/main/resources/META-INF/neoforge.mods.toml",
+      "src/main/resources/heavyspear.mixins.json",
+      "src/main/java/net/minecraft/heavyspear/HeavyspearMod.java"
+    ]
+  },
+  "foldersRoot": {
+    "name": "~",
+    "children": []
+  },
+  "workspaceSettings": {
+    "modid": "heavyspear",
+    "modName": "Heavy Spear",
+    "version": "1.0.0",
+    "description": "a simple mod add heavy spear",
+    "author": "Lyingice",
+    "websiteURL": "https://space.bilibili.com/385338736",
+    "license": "MIT License",
+    "serverSideOnly": false,
+    "modPicture": "heavy_spear",
+    "requiredMods": [],
+    "dependencies": [],
+    "dependants": [],
+    "mcreatorDependencies": [],
+    "currentGenerator": "neoforge-1.21.1",
+    "credits": "https://space.bilibili.com/385338736",
+    "modElementsPackage": "net.minecraft.heavyspear"
+  },
+  "mcreatorVersion": 202600113616
+}
