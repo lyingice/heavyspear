@@ -1,2 +1,0 @@
-/give @a heavyspear:heavy_spear
-/enchant @a spearcore:lunge 3

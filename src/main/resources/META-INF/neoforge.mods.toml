@@ -4,10 +4,10 @@ license="MIT License"
 
 [[mods]]
 modId="heavyspear"
-version="1.0.0"
+version="1.0.1"
 displayName="Heavy Spear"
 displayURL="https://space.bilibili.com/385338736"
-logoFile="logo.png"
+logoFile="heavy_spear.png"
 credits="https://space.bilibili.com/385338736"
 authors="Lyingice"
 description="a simple mod add heavy spear"
