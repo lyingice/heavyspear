@@ -4,12 +4,12 @@ plugins {
 }
 
 version = '1.0.1'
-base.archivesName = "HeavySpear-neo-1.21.1"
+base.archivesName = "HeavySpear-26.1.2-neoforge"
 
-java.toolchain.languageVersion = JavaLanguageVersion.of(21)
+java.toolchain.languageVersion = JavaLanguageVersion.of(25)
 
 neoForge {
-    version = "21.1.190"
+    version = "26.1.2.109"
 
     runs {
         client {
@@ -33,17 +33,20 @@ neoForge {
     }
 
     mods {
-        mcreator {
+        heavyspear {
             sourceSet sourceSets.main
         }
     }
 }
-dependencies {
-    // 编译时可用，但不打包进最终 jar
-    implementation fileTree(dir: 'libs', include: ['*.jar'])
-}
+
 tasks.withType(JavaCompile).configureEach {
-    options.encoding = 'UTF-8' // Use the UTF-8 charset for Java compilation
+    options.encoding = 'UTF-8'
 }
 
 apply from: 'mcreator.gradle'
+
+sourceSets.main.resources.srcDir 'src/generated/resources'
+
+tasks.withType(ProcessResources).configureEach {
+    duplicatesStrategy = DuplicatesStrategy.INCLUDE
+}

@@ -12,36 +12,16 @@ credits="https://space.bilibili.com/385338736"
 authors="Lyingice"
 description="a simple mod add heavy spear"
 
-# Start of user code block mod configuration
-# End of user code block mod configuration
-
-[[mixins]]
-    config = "heavyspear.mixins.json"
-
-# Start of user code block custom mixins
-# End of user code block custom mixins
+[[dependencies.heavyspear]]
+modId="neoforge"
+type="required"
+versionRange="[26.1.2.71,)"
+ordering="AFTER"
+side="BOTH"
 
 [[dependencies.heavyspear]]
-    modId="neoforge"
-    type="required"
-    versionRange="[21.1.190,)"
-    ordering="AFTER"
-    side="BOTH"
-
-[[dependencies.heavyspear]]
-    modId="minecraft"
-    type="required"
-    versionRange="[1.21.1]"
-    ordering="AFTER"
-    side="BOTH"
-
-
-
-
-# Start of user code block dependencies configuration
-[[dependencies.heavyspear]]
-modId = "spearcore"
-mandatory = true
-versionRange = "[2.0.4,)"
-ordering = "BEFORE"
-# End of user code block dependencies configuration
+modId="minecraft"
+type="required"
+versionRange="[26.1.2]"
+ordering="AFTER"
+side="BOTH"
