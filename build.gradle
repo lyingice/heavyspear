@@ -3,8 +3,8 @@ plugins {
     id 'net.neoforged.moddev' version '2.0.141'
 }
 
-version = '1.0'
-base.archivesName = "modid"
+version = '1.0.1'
+base.archivesName = "HeavySpear-neo-1.21.1"
 
 java.toolchain.languageVersion = JavaLanguageVersion.of(21)
 
