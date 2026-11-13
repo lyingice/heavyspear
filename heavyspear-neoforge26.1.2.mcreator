@@ -14,6 +14,10 @@
       "src/main/java/net/minecraft/heavyspear/HeavyspearMod.java",
       "src/main/java/net/minecraft/heavyspear/init/HeavyspearModItems.java",
       "src/main/java/net/minecraft/heavyspear/item/HeavySpearItem.java",
+      "src/main/java/net/minecraft/heavyspear/item/HeavySpearSmash.java",
+      "src/main/java/net/minecraft/heavyspear/mixin/ItemStackMixin.java",
+      "src/main/java/net/minecraft/heavyspear/mixin/PiercingWeaponMixin.java",
+      "src/main/resources/heavyspear.mixins.json",
       "src/main/resources/META-INF/neoforge.mods.toml",
       "src/main/resources/pack.mcmeta"
     ]

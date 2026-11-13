@@ -12,6 +12,9 @@ credits="https://space.bilibili.com/385338736"
 authors="Lyingice"
 description="a simple mod add heavy spear"
 
+[[mixins]]
+config = "heavyspear.mixins.json"
+
 [[dependencies.heavyspear]]
 modId="neoforge"
 type="required"

@@ -1,0 +1,13 @@
+{
+  "required": true,
+  "minVersion": "0.8.4",
+  "package": "net.minecraft.heavyspear.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "ItemStackMixin",
+    "PiercingWeaponMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

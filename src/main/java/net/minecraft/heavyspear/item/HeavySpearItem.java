@@ -13,8 +13,10 @@ import net.minecraft.world.item.ToolMaterial;
  * 直接使用原版长矛组件：.spear(...) 会设置 KINETIC_WEAPON、PIERCING_WEAPON、
  * ATTACK_RANGE、DAMAGE_TYPE、挥击动画、攻击属性等，参数与 1.21.1 的 master 基本一致。
  *
- * 注意：本分支不包含 master 的坠落砸地 AOE；26.1.2 中带有 KINETIC_WEAPON 的物品
- * 会绕过 Item#onUseTick，若需要砸地机制需要额外 mixin/自定义组件。
+ * 坠落砸地 AOE 由 HeavySpearSmash + 两个 mixin 接管：
+ * - ItemStackMixin 接管蓄力侧（26.1.2 的 KINETIC_WEAPON 会绕过 Item#onUseTick）
+ * - PiercingWeaponMixin 接管左键戳刺侧
+ * 非坠落状态仍完全使用原版长矛组件。
  */
 public class HeavySpearItem extends Item {
     public static final TagKey<Item> HEAVY_SPEAR_REPAIR = TagKey.create(
