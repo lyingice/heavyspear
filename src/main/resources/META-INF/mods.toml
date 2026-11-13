@@ -1,0 +1,34 @@
+modLoader="javafml"
+loaderVersion="[47,)"
+license="MIT License"
+
+[[mods]]
+modId="heavyspear"
+version="1.0.1"
+displayName="Heavy Spear"
+displayURL="https://space.bilibili.com/385338736"
+logoFile="heavy_spear.png"
+credits="https://space.bilibili.com/385338736"
+authors="Lyingice"
+description="a simple mod add heavy spear"
+
+[[dependencies.heavyspear]]
+modId="forge"
+mandatory=true
+versionRange="[47,)"
+ordering="AFTER"
+side="BOTH"
+
+[[dependencies.heavyspear]]
+modId="minecraft"
+mandatory=true
+versionRange="[1.20.1]"
+ordering="AFTER"
+side="BOTH"
+
+[[dependencies.heavyspear]]
+modId="spearcore"
+mandatory=true
+versionRange="[3.2.0,)"
+ordering="AFTER"
+side="BOTH"

@@ -1,49 +1,95 @@
 plugins {
     id 'eclipse'
-    id 'net.neoforged.moddev' version '2.0.141'
+    id 'net.minecraftforge.gradle' version '[6.0.16,6.2)'
 }
 
 version = '1.0.1'
-base.archivesName = "HeavySpear-neo-1.21.1"
+group = 'net.minecraft.heavyspear'
+archivesBaseName = 'HeavySpear-forge-1.20.1'
 
-java.toolchain.languageVersion = JavaLanguageVersion.of(21)
+java.toolchain.languageVersion = JavaLanguageVersion.of(17)
 
-neoForge {
-    version = "21.1.190"
+// SpearCore 的 mixin refmap 是 SRG 名；开发环境需要把 refmap 重映射到 official。
+def spearcoreRefmapRemapFile = project(':spearcore').file('build/createSrgToMcp/output.srg').absolutePath
+
+minecraft {
+    mappings channel: 'official', version: '1.20.1'
+    copyIdeResources = true
 
     runs {
         client {
-            client()
+            workingDirectory project.file('run')
+            property 'forge.logging.markers', 'REGISTRIES'
+            property 'forge.logging.console.level', 'debug'
+            jvmArgs "-Dmixin.env.remapRefMap=true",
+                    "-Dmixin.env.refMapRemappingFile=${spearcoreRefmapRemapFile}"
 
-            def mcreatorJvmOptions = System.getenv('MCREATOR_JVM_OPTIONS')
-            if (mcreatorJvmOptions) {
-                mcreatorJvmOptions.split("\\s+").findAll { it.trim() }.each { arg ->
-                    jvmArgument(arg)
+            mods {
+                heavyspear {
+                    source sourceSets.main
                 }
             }
         }
+
         server {
-            server()
-        }
+            workingDirectory project.file('run')
+            property 'forge.logging.markers', 'REGISTRIES'
+            property 'forge.logging.console.level', 'debug'
+            jvmArgs "-Dmixin.env.remapRefMap=true",
+                    "-Dmixin.env.refMapRemappingFile=${spearcoreRefmapRemapFile}"
 
-        configureEach {
-            systemProperty 'forge.logging.markers', 'REGISTRIES'
-            logLevel = org.slf4j.event.Level.DEBUG
-        }
-    }
-
-    mods {
-        mcreator {
-            sourceSet sourceSets.main
+            mods {
+                heavyspear {
+                    source sourceSets.main
+                }
+            }
         }
     }
 }
+
+tasks.configureEach {
+    if (name == 'runClient' || name == 'runServer') {
+        dependsOn ':spearcore:classes'
+        dependsOn ':spearcore:createSrgToMcp'
+        dependsOn 'spearcoreDevJar'
+    }
+}
+
+// 把 SpearCore 的 dev classes/resources 打成开发用 mod jar，放进 run/mods。
+// 这样 Forge 能发现 spearcore 这个 mod，同时避免生产 reobf jar 的 SRG 字段引用。
+tasks.register('spearcoreDevJar', Jar) {
+    dependsOn ':spearcore:classes'
+    archiveFileName = 'spearcore-1.20.1-forge-3.2.1-dev.jar'
+    destinationDirectory = layout.projectDirectory.dir('run/mods')
+    from project(':spearcore').sourceSets.main.output
+    from project(':spearcore').file('build/tmp/compileJava/mixins.spearcore.refmap.json')
+}
+
+repositories {
+    mavenCentral()
+    maven {
+        name = 'MinecraftForge'
+        url = 'https://maven.minecraftforge.net/'
+    }
+}
+
+// SpearCore 的 KubeJS/Rhino/Architectury 运行时依赖是可选联动，
+// 本开发环境不需要，排掉以免解析失败。
+configurations.runtimeClasspath {
+    exclude group: 'dev.latvian.mods'
+    exclude group: 'dev.architectury'
+}
+
 dependencies {
-    // 编译时可用，但不打包进最终 jar
-    implementation fileTree(dir: 'libs', include: ['*.jar'])
+    minecraft 'net.minecraftforge:forge:1.20.1-47.3.0'
+
+    // SpearCore 1.20.1 硬前置：开发环境使用隔壁的源码工程。
+    // 生产 jar 通过 mods.toml 声明为必需前置，不打包进本 mod。
+    compileOnly project(':spearcore')
 }
+
 tasks.withType(JavaCompile).configureEach {
-    options.encoding = 'UTF-8' // Use the UTF-8 charset for Java compilation
+    options.encoding = 'UTF-8'
 }
 
 apply from: 'mcreator.gradle'

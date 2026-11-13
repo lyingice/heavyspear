@@ -1,37 +1,44 @@
 package net.minecraft.heavyspear.item;
 
-import java.util.List;
-import java.util.Optional;
-import java.util.function.Predicate;
+import com.google.common.collect.ImmutableMultimap;
+import com.google.common.collect.Multimap;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction.Axis;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.protocol.game.ClientboundSetEntityMotionPacket;
-import net.minecraft.resources.ResourceLocation;
-import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
+import net.minecraft.spearcore.init.SpearDamageTypes;
+import net.minecraft.spearcore.init.SpearSounds;
+import net.minecraft.spearcore.item.SpearItem;
+import net.minecraft.spearcore.util.SpearCondition;
 import net.minecraft.spearcore.util.SpearCooldownAccessor;
 import net.minecraft.world.InteractionHand;
-import net.minecraft.world.entity.*;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EquipmentSlot;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.TamableAnimal;
+import net.minecraft.world.entity.ai.attributes.Attribute;
 import net.minecraft.world.entity.ai.attributes.AttributeModifier;
+import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.decoration.ArmorStand;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.component.ItemAttributeModifiers;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
-import net.minecraft.world.item.MaceItem;
-import net.minecraft.spearcore.item.SpearItem;
-import net.minecraft.spearcore.util.SpearCondition;
-import net.minecraft.spearcore.init.SpearSounds;
-import net.minecraft.spearcore.init.SpearDamageTypes;
+import net.minecraftforge.common.ForgeMod;
+
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+import java.util.function.Predicate;
+
 /**
- * 重矛 - 融合重锤坠落机制的矛
+ * 重矛 - 融合重锤坠落机制的矛（1.20.1 Forge 移植版）
  *
  * 机制说明：
  * 1. 伤害 = 矛基础伤害 + 速度加成 + 坠落伤害（重锤公式）
@@ -53,6 +60,11 @@ public class HeavySpearItem extends SpearItem {
     private static final String FALL_DISTANCE_TIME_KEY = "heavyspear_fall_distance_time";
     /** 落地后缓存仍然有效的宽限期（tick），约 0.5 秒 */
     private static final long FALL_DISTANCE_GRACE_TICKS = 10;
+
+    // ========== 1.20.1 属性 UUID ==========
+    private static final UUID BASE_ATTACK_DAMAGE_ID = UUID.fromString("CB3F55D3-645C-4F38-A497-9C13A33DB5CF");
+    private static final UUID BASE_ATTACK_SPEED_ID = UUID.fromString("FA233E1C-4180-4865-B01B-BCCE9785ACA3");
+    private static final UUID SPEAR_RANGE_ID = UUID.fromString("6B7F3C1E-9A2D-4B5E-8C1F-0D2A3B4C5D6E");
 
     public HeavySpearItem(Properties properties) {
         super(properties);
@@ -258,7 +270,7 @@ public class HeavySpearItem extends SpearItem {
         }
 
         // ===== 重锤蓄力AOE（坠落中：跳过前摇）=====
-        int usedTicks = stack.getUseDuration(user) - remainingTicks;
+        int usedTicks = stack.getUseDuration() - remainingTicks;
         if (usedTicks >= getDamageEndTick()) {
             user.stopUsingItem();
             return;
@@ -287,7 +299,7 @@ public class HeavySpearItem extends SpearItem {
 
             if (target.hurt(SpearDamageTypes.spear(level, user), damage)) {
                 hitSomething = true;
-                stack.hurtAndBreak(1, user, EquipmentSlot.MAINHAND);
+                stack.hurtAndBreak(1, user, e -> e.broadcastBreakEvent(EquipmentSlot.MAINHAND));
                 player.setLastHurtMob(target);
             }
         }
@@ -296,14 +308,10 @@ public class HeavySpearItem extends SpearItem {
             level.broadcastEntityEvent(user, (byte) 2);
 
             SoundEvent sound = fallDistance > SMASH_ATTACK_HEAVY_THRESHOLD
-                    ? SoundEvents.MACE_SMASH_GROUND_HEAVY
-                    : SoundEvents.MACE_SMASH_GROUND;
+                    ? SoundEvents.GENERIC_EXPLODE
+                    : SoundEvents.ANVIL_LAND;
             level.playSound(null, user.getX(), user.getY(), user.getZ(),
                     sound, SoundSource.PLAYERS, 1.0F, 1.0F);
-
-            if (user instanceof ServerPlayer sp) {
-                sp.setSpawnExtraParticlesOnFall(true);
-            }
 
             smashKnockback(level, player, targets, fallDistance);
 
@@ -362,7 +370,7 @@ public class HeavySpearItem extends SpearItem {
 
             if (target.hurt(SpearDamageTypes.spear(level, attacker), damage)) {
                 hitSomething = true;
-                stack.hurtAndBreak(1, attacker, slot);
+                stack.hurtAndBreak(1, attacker, e -> e.broadcastBreakEvent(slot));
                 player.setLastHurtMob(target);
                 player.fallDistance = 0.0F;
                 clearFallDistance(player);
@@ -374,12 +382,12 @@ public class HeavySpearItem extends SpearItem {
 
         if (hitSomething) {
             SoundEvent sound = fallDistance > SMASH_ATTACK_HEAVY_THRESHOLD
-                    ? SoundEvents.MACE_SMASH_GROUND_HEAVY
-                    : SoundEvents.MACE_SMASH_GROUND;
+                    ? SoundEvents.GENERIC_EXPLODE
+                    : SoundEvents.ANVIL_LAND;
             level.playSound(null, attacker.getX(), attacker.getY(), attacker.getZ(),
                     sound, SoundSource.PLAYERS, 1.0F, 1.0F);
             level.playSound(null, attacker.getX(), attacker.getY(), attacker.getZ(),
-                    SoundEvents.MACE_SMASH_AIR, SoundSource.PLAYERS, 1.0F, 1.0F);
+                    SoundEvents.PLAYER_ATTACK_SWEEP, SoundSource.PLAYERS, 1.0F, 1.0F);
 
             smashKnockback(level, player, targets, fallDistance);
 
@@ -448,7 +456,7 @@ public class HeavySpearItem extends SpearItem {
 
             if (target.hurt(SpearDamageTypes.spear(level, attacker), damage)) {
                 hitSomething = true;
-                stack.hurtAndBreak(1, attacker, slot);
+                stack.hurtAndBreak(1, attacker, e -> e.broadcastBreakEvent(slot));
                 player.setLastHurtMob(target);
                 player.fallDistance = 0.0F;
                 clearFallDistance(player);
@@ -460,29 +468,16 @@ public class HeavySpearItem extends SpearItem {
         }
 
         if (hitSomething) {
-            // 追踪冲击位置（原版粒子用）
-            if (player instanceof ServerPlayer sp) {
-                if (sp.isIgnoringFallDamageFromCurrentImpulse() && sp.currentImpulseImpactPos != null) {
-                    if (sp.currentImpulseImpactPos.y > sp.position().y) {
-                        sp.currentImpulseImpactPos = sp.position();
-                    }
-                } else {
-                    sp.currentImpulseImpactPos = sp.position();
-                }
-                sp.setIgnoreFallDamageFromCurrentImpulse(true);
-                sp.setSpawnExtraParticlesOnFall(true);
-            }
-
             // 目标在地面→砸地音效，在空中→挥击音效
             if (targets.stream().anyMatch(LivingEntity::onGround)) {
                 SoundEvent sound = fallDistance > SMASH_ATTACK_HEAVY_THRESHOLD
-                        ? SoundEvents.MACE_SMASH_GROUND_HEAVY
-                        : SoundEvents.MACE_SMASH_GROUND;
+                        ? SoundEvents.GENERIC_EXPLODE
+                        : SoundEvents.ANVIL_LAND;
                 level.playSound(null, attacker.getX(), attacker.getY(), attacker.getZ(),
                         sound, SoundSource.PLAYERS, 1.0F, 1.0F);
             } else {
                 level.playSound(null, attacker.getX(), attacker.getY(), attacker.getZ(),
-                        SoundEvents.MACE_SMASH_AIR, SoundSource.PLAYERS, 1.0F, 1.0F);
+                        SoundEvents.PLAYER_ATTACK_SWEEP, SoundSource.PLAYERS, 1.0F, 1.0F);
             }
 
             smashKnockback(level, player, targets, fallDistance);
@@ -577,39 +572,24 @@ public class HeavySpearItem extends SpearItem {
         return !player.isCreative();
     }
 
-    @Override
-    public int getUseDuration(ItemStack stack, LivingEntity entity) {
-        return 72000;
-    }
-
     // ========== 物品栏属性显示 ==========
 
-    private static final ResourceLocation BASE_ATTACK_DAMAGE_ID =
-            ResourceLocation.withDefaultNamespace("base_attack_damage");
-    private static final ResourceLocation BASE_ATTACK_SPEED_ID =
-            ResourceLocation.withDefaultNamespace("base_attack_speed");
-
     @Override
-    public ItemAttributeModifiers getDefaultAttributeModifiers(ItemStack stack) {
-        var builder = ItemAttributeModifiers.builder();
+    public Multimap<Attribute, AttributeModifier> getDefaultAttributeModifiers(EquipmentSlot slot) {
+        if (slot != EquipmentSlot.MAINHAND) {
+            return super.getDefaultAttributeModifiers(slot);
+        }
 
-        builder.add(net.minecraft.world.entity.ai.attributes.Attributes.ATTACK_DAMAGE,
-                new AttributeModifier(BASE_ATTACK_DAMAGE_ID,
-                        4.0, // 下界合金长矛攻击伤害加成
-                        AttributeModifier.Operation.ADD_VALUE),
-                EquipmentSlotGroup.MAINHAND);
-
-        builder.add(net.minecraft.world.entity.ai.attributes.Attributes.ATTACK_SPEED,
-                new AttributeModifier(BASE_ATTACK_SPEED_ID,
-                        1.0F / 1.15F - 4.0F, // 下界合金长矛攻击速度
-                        AttributeModifier.Operation.ADD_VALUE),
-                EquipmentSlotGroup.MAINHAND);
-
-        builder.add(net.minecraft.world.entity.ai.attributes.Attributes.ENTITY_INTERACTION_RANGE,
-                new AttributeModifier(ResourceLocation.fromNamespaceAndPath("spearcore", "spear_range"),
-                        1.5, AttributeModifier.Operation.ADD_VALUE),
-                EquipmentSlotGroup.MAINHAND);
-
+        ImmutableMultimap.Builder<Attribute, AttributeModifier> builder = ImmutableMultimap.builder();
+        builder.put(Attributes.ATTACK_DAMAGE,
+                new AttributeModifier(BASE_ATTACK_DAMAGE_ID, "base_attack_damage",
+                        4.0, AttributeModifier.Operation.ADDITION));
+        builder.put(Attributes.ATTACK_SPEED,
+                new AttributeModifier(BASE_ATTACK_SPEED_ID, "base_attack_speed",
+                        1.0F / 1.15F - 4.0F, AttributeModifier.Operation.ADDITION));
+        builder.put(ForgeMod.ENTITY_REACH.get(),
+                new AttributeModifier(SPEAR_RANGE_ID, "spear_range",
+                        1.5, AttributeModifier.Operation.ADDITION));
         return builder.build();
     }
 }

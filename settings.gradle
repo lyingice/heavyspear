@@ -1,11 +1,15 @@
 pluginManagement {
     repositories {
-        mavenLocal()
         gradlePluginPortal()
-        maven { url = 'https://maven.neoforged.net/releases' }
+        maven {
+            name = 'MinecraftForge'
+            url = 'https://maven.minecraftforge.net/'
+        }
     }
 }
 
-plugins {
-    id 'org.gradle.toolchains.foojay-resolver-convention' version '1.0.0'
-}
+rootProject.name = 'heavyspear-1.20.1forge'
+
+// SpearCore 1.20.1 源码工程：开发环境直接用它的 dev 输出，避免生产 jar 的 refmap/SRG 问题。
+include ':spearcore'
+project(':spearcore').projectDir = file('../spearcore-1.20.1')
