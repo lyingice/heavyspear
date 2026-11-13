@@ -9,6 +9,7 @@
 - 不再依赖 SpearCore；只需要 NeoForge 26.1.2。
 - 已通过轻量 mixin 补回 master 的坠落砸地 AOE：坠落状态下蓄力/左键戳击会接管原版长矛攻击，造成向下扩展的 AOE 伤害、击退、反冲与重锤音效。
 - 非坠落状态完全走原版长矛组件，不改变普通蓄力/戳刺手感。
+- 支持重锤专属附魔：Density、Breach、Wind Burst（通过 `#minecraft:enchantable/mace` 标签）。
 
 ## 构建
 
@@ -53,5 +54,5 @@ org.gradle.java.installations.paths=D:/001/MCR2025.3/MCreator20262/jdk
 ## 说明
 
 - 物品模型使用 26.1.2 的 `minecraft:select` 物品定义：GUI/掉落物使用普通物品模型，手持使用 `minecraft:item/spear_in_hand`。
-- 重矛已加入 `#minecraft:spears` 与相关 `enchantable/*` 标签，Lunge 等长矛附魔可正常生效。
+- 重矛已加入 `#minecraft:spears`、`#minecraft:enchantable/mace` 与相关 `enchantable/*` 标签，Lunge 以及重锤的 Density / Breach / Wind Burst 附魔都可正常生效。
 - 本分支使用代码型 MCreator 工作区（没有物品 mod element），物品逻辑在 Java 源码中维护。
