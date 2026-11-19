@@ -284,6 +284,8 @@ public class HeavySpearItem extends SpearItem {
             double targetSpeed = look.dot(getMotion(target));
             double relSpeed = Math.max(0.0, attackerSpeed - targetSpeed);
             float damage = calculateTotalDamage((float) baseDamage, relSpeed, fallDistance);
+            damage += spear$densityBonus(level, stack, fallDistance);
+            damage = spear$applyBreach(level, stack, target, damage);
 
             if (target.hurt(SpearDamageTypes.spear(level, user), damage)) {
                 hitSomething = true;
@@ -293,6 +295,8 @@ public class HeavySpearItem extends SpearItem {
         }
 
         if (hitSomething) {
+            // 一次蓄力只允许一次砸地：停用物品 + 上冷却，避免继续下落时对同一目标重复结算
+            player.stopUsingItem();
             level.broadcastEntityEvent(user, (byte) 2);
 
             SoundEvent sound = fallDistance > SMASH_ATTACK_HEAVY_THRESHOLD
@@ -312,7 +316,10 @@ public class HeavySpearItem extends SpearItem {
             clearFallDistance(player);
 
             // 加上玩家反冲力
-            player.setDeltaMovement(player.getDeltaMovement().add(0.0, 0.6F, 0.0));
+            double windBurst = spear$windBurstLift(level, stack);
+            spear$windBurstFx(level, player, windBurst);
+            player.setDeltaMovement(player.getDeltaMovement()
+                    .add(0.0, windBurst > 0 ? windBurst : 0.6, 0.0));
             if (player instanceof ServerPlayer sp) {
                 sp.connection.send(new ClientboundSetEntityMotionPacket(sp));
                 sp.hurtMarked = true;
@@ -383,7 +390,11 @@ public class HeavySpearItem extends SpearItem {
 
             smashKnockback(level, player, targets, fallDistance);
 
-            player.setDeltaMovement(player.getDeltaMovement().add(0.0, 0.6F, 0.0));
+            // 风爆：按原版倍率上抬；没有风爆附魔时沿用原来的 0.6 反冲
+            double windBurst = spear$windBurstLift(level, stack);
+            spear$windBurstFx(level, player, windBurst);
+            player.setDeltaMovement(player.getDeltaMovement()
+                    .add(0.0, windBurst > 0 ? windBurst : 0.6, 0.0));
             if (player instanceof ServerPlayer sp) {
                 sp.connection.send(new ClientboundSetEntityMotionPacket(sp));
                 sp.hurtMarked = true;
@@ -445,6 +456,9 @@ public class HeavySpearItem extends SpearItem {
             double targetSpeed = look.dot(getMotion(target));
             double relSpeed = Math.max(0.0F, attackerSpeed - targetSpeed);
             float damage = calculateTotalDamage(baseDamage, relSpeed, fallDistance);
+            // 与右键蓄力同一套附魔结算
+            damage += spear$densityBonus(level, stack, fallDistance);
+            damage = spear$applyBreach(level, stack, target, damage);
 
             if (target.hurt(SpearDamageTypes.spear(level, attacker), damage)) {
                 hitSomething = true;
@@ -612,4 +626,92 @@ public class HeavySpearItem extends SpearItem {
 
         return builder.build();
     }
+
+    // ===== 重锤三附魔（1.1.0 补齐：此前只有 enchantable/mace 标签，没有效果）=====
+
+    /** 取某个附魔在物品上的等级；拿不到注册表时返回 0。 */
+    private static int spear$enchantLevel(net.minecraft.world.level.Level level, ItemStack stack,
+                                          net.minecraft.resources.ResourceKey<net.minecraft.world.item.enchantment.Enchantment> key) {
+        try {
+            var holder = level.registryAccess()
+                    .lookupOrThrow(net.minecraft.core.registries.Registries.ENCHANTMENT)
+                    .getOrThrow(key);
+            return net.minecraft.world.item.enchantment.EnchantmentHelper
+                    .getItemEnchantmentLevel(holder, stack);
+        } catch (RuntimeException e) {
+            return 0;
+        }
+    }
+
+    /**
+     * 密度：每级每格下落 +0.5 伤害（原版数值）。
+     */
+    private static float spear$densityBonus(net.minecraft.world.level.Level level, ItemStack stack, float fallDistance) {
+        int level2 = spear$enchantLevel(level, stack,
+                net.minecraft.world.item.enchantment.Enchantments.DENSITY);
+        return level2 <= 0 ? 0.0F : 0.5F * level2 * Math.max(0.0F, fallDistance);
+    }
+
+    /**
+     * 破甲：按原版「每点护甲减免 4%、上限 80%」，把目标护甲的有效率降低 15%/级，
+     * 再把伤害折算回去 —— 等价于让目标少减那么多血。护甲为 0 时无影响。
+     */
+    private static float spear$applyBreach(net.minecraft.world.level.Level level, ItemStack stack,
+                                           net.minecraft.world.entity.LivingEntity target, float damage) {
+        int level2 = spear$enchantLevel(level, stack,
+                net.minecraft.world.item.enchantment.Enchantments.BREACH);
+        if (level2 <= 0) {
+            return damage;
+        }
+        float armor = target.getArmorValue();
+        if (armor <= 0.0F) {
+            return damage;
+        }
+        float keepNormal = 1.0F - Math.min(0.8F, armor * 0.04F);
+        float keepBreached = 1.0F - Math.min(0.8F, armor * (1.0F - 0.15F * level2) * 0.04F);
+        return keepNormal <= 0.0F ? damage : damage * (keepBreached / keepNormal);
+    }
+
+    /**
+     * 风爆：砸中后把玩家向上弹起，基础 0.6，每级再 +0.6。
+     * 返回 0 表示没有风爆附魔（调用方沿用原来的固定反冲）。
+     */
+    /**
+     * 风爆：按原版 {@code wind_burst.json} 的 {@code knockback_multiplier} —— I 1.2 / II 1.75 / III 2.2。
+     * 原版是一次 radius 3.5 的爆炸把攻击者弹飞，这里直接给垂直初速度，避免自伤。
+     *
+     * @return 垂直初速度；没有风爆附魔时返回 -1（调用方沿用原来的 0.6 反冲）
+     */
+    private static double spear$windBurstLift(net.minecraft.world.level.Level level, ItemStack stack) {
+        int level2 = spear$enchantLevel(level, stack,
+                net.minecraft.world.item.enchantment.Enchantments.WIND_BURST);
+        if (level2 <= 0) {
+            return -1.0;
+        }
+        double[] multipliers = {1.2, 1.75, 2.2};
+        return multipliers[Math.min(level2, 3) - 1];
+    }
+
+
+    /**
+     * 风爆的粒子与音效。
+     *
+     * <p>原版 {@code wind_burst.json} 里除了弹射，还带
+     * {@code large_particle: minecraft:gust_emitter_large}、
+     * {@code small_particle: minecraft:gust_emitter_small}、
+     * {@code sound: minecraft:entity.wind_charge.wind_burst} —— 这里一并补上。</p>
+     */
+    private static void spear$windBurstFx(net.minecraft.world.level.Level level,
+                                          net.minecraft.world.entity.player.Player player, double lift) {
+        if (lift <= 0) {
+            return;
+        }
+        if (level instanceof net.minecraft.server.level.ServerLevel serverLevel) {
+            serverLevel.sendParticles(net.minecraft.core.particles.ParticleTypes.GUST_EMITTER_SMALL,
+                    player.getX(), player.getY() + 0.5, player.getZ(), 1, 0.0, 0.0, 0.0, 0.0);
+            serverLevel.sendParticles(net.minecraft.core.particles.ParticleTypes.GUST_EMITTER_LARGE,
+                    player.getX(), player.getY() + 0.5, player.getZ(), 1, 0.0, 0.0, 0.0, 0.0);
+        }
+    }
+
 }
