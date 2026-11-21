@@ -5,8 +5,11 @@ import java.util.Optional;
 import java.util.function.Predicate;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction.Axis;
+import net.minecraft.core.Holder;
+import net.minecraft.core.registries.Registries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.protocol.game.ClientboundSetEntityMotionPacket;
+import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -21,6 +24,7 @@ import net.minecraft.world.entity.decoration.ArmorStand;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.component.ItemAttributeModifiers;
+import net.minecraft.world.item.enchantment.Enchantment;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
@@ -53,6 +57,22 @@ public class HeavySpearItem extends SpearItem {
     private static final String FALL_DISTANCE_TIME_KEY = "heavyspear_fall_distance_time";
     /** 落地后缓存仍然有效的宽限期（tick），约 0.5 秒 */
     private static final long FALL_DISTANCE_GRACE_TICKS = 10;
+
+    // ========== 突进（lunge）增强 ==========
+    /** Spear Core 的“突进”附魔；等级从物品上读取。 */
+    private static final ResourceKey<Enchantment> LUNGE_ENCHANTMENT = ResourceKey.create(
+            Registries.ENCHANTMENT, ResourceLocation.fromNamespaceAndPath("spearcore", "lunge"));
+    /** 与 SpearItem#rushAttack 保持一致：每级 0.65 格/刻的水平推进。 */
+    private static final double LUNGE_STRENGTH_PER_LEVEL = 0.65D;
+    /**
+     * 仰角速度衰减：3 级时严格为 {@code 1.95 - 仰角 / 150}，即每度降低 1/150 格/刻；
+     * 其他等级按等级等比例缩放，避免 1 级在 90° 时速度直接归零。
+     */
+    private static final double LUNGE_ELEVATION_PENALTY = 1.0D / 150.0D;
+    /** 计算出的位移量太小时不发送速度包。 */
+    private static final double MIN_LUNGE_DELTA = 1.0E-4D;
+    /** 向上戳刺每 25° 仰角让耐久消耗增加一倍；低于 25° 仍为 1 倍。 */
+    private static final double DURABILITY_ELEVATION_STEP = 25.0D;
 
     public HeavySpearItem(Properties properties) {
         super(properties);
@@ -222,7 +242,159 @@ public class HeavySpearItem extends SpearItem {
 
     /** 是否满足砸地条件（缓存距离 + 非鞘翅飞行） */
     private boolean canSmash(Player player, float fallDistance) {
-        return fallDistance > SMASH_ATTACK_FALL_THRESHOLD && !player.isFallFlying();
+        return player != null && fallDistance > SMASH_ATTACK_FALL_THRESHOLD && !player.isFallFlying();
+    }
+
+    /**
+     * 让 Spear Core 的“突进”附魔支持 Y 轴、允许滑翔触发，并按仰角降低总速度。
+     *
+     * <p>父类的 rushAttack 只推进水平分量（Y 恒为 0），而且 {@code isFallFlying()}
+     * 为 true 时会直接跳过整个突进。这里分两种情况补齐：</p>
+     * <ul>
+     *   <li>普通状态：父类已推进 {@code baseSpeed * (look.x, 0, look.z)}，
+     *       这里补足到目标速度向量 {@code speed * look}；</li>
+     *   <li>滑翔状态：父类不会突进，这里直接推入完整的目标速度向量，并自行结算耐久、
+     *       饥饿值和突进音效。</li>
+     * </ul>
+     *
+     * <p>目标速度按仰角衰减：3 级时严格为 {@code 1.95 - 仰角 / 150}
+     * （平视 1.95，垂直 1.35）；其他等级按等级等比例缩放。</p>
+     *
+     * <p>向下按“原本的突进”：只推水平（Y=0），不做仰角减速、不做向上耐久倍率。</p>
+     */
+    private void applyLungeExtension(LivingEntity user) {
+        if (user.level().isClientSide) {
+            return;
+        }
+
+        if (user.isPassenger() || user.isInWater()) {
+            return;
+        }
+
+        ItemStack mainHand = user.getMainHandItem();
+        if (!(mainHand.getItem() instanceof SpearItem)) {
+            return;
+        }
+
+        int lungeLevel = spear$enchantLevel(user.level(), mainHand, LUNGE_ENCHANTMENT);
+        if (lungeLevel <= 0) {
+            return;
+        }
+
+        if (user instanceof Player player && player.getFoodData().getFoodLevel() <= 7) {
+            return;
+        }
+
+        Vec3 look = user.getLookAngle();
+        double baseSpeed = LUNGE_STRENGTH_PER_LEVEL * (double) lungeLevel;
+        if (look.y < 0.0D) {
+            // 向下：非滑翔时由父类正常结算；滑翔时父类跳过，这里手动补同样的水平推进和消耗。
+            if (user.isFallFlying()) {
+                if (mainHand.isDamageableItem() && user instanceof Player) {
+                    mainHand.hurtAndBreak(1, user, EquipmentSlot.MAINHAND);
+                }
+                if (user instanceof Player player) {
+                    player.causeFoodExhaustion(4.0F * (float) lungeLevel);
+                }
+                user.push(look.x * baseSpeed, 0.0D, look.z * baseSpeed);
+                playLungeSound(user, lungeLevel);
+                sendAttackerMotion(user);
+            }
+            return;
+        }
+
+        double speed = lungeSpeed(look.y, baseSpeed, lungeLevel);
+
+        if (user.isFallFlying()) {
+            // 滑翔时父类会跳过突进：直接推入完整的目标速度向量，并补上耐久、饥饿和音效。
+            if (mainHand.isDamageableItem() && user instanceof Player) {
+                mainHand.hurtAndBreak(upwardDurabilityMultiplier(look.y), user, EquipmentSlot.MAINHAND);
+            }
+            if (user instanceof Player player) {
+                player.causeFoodExhaustion(4.0F * (float) lungeLevel);
+            }
+            user.push(look.x * speed, look.y * speed, look.z * speed);
+            playLungeSound(user, lungeLevel);
+            sendAttackerMotion(user);
+            return;
+        }
+
+        // 普通状态：父类已经推进了 baseSpeed * (look.x, 0, look.z)。
+        // 这里补差值，使最终速度向量等于 speed * look；抬头时水平略微回收、竖直补上。
+        double dx = (speed - baseSpeed) * look.x;
+        double dz = (speed - baseSpeed) * look.z;
+        double dy = speed * look.y;
+        if (Math.abs(dx) + Math.abs(dy) + Math.abs(dz) < MIN_LUNGE_DELTA) {
+            return;
+        }
+        user.push(dx, dy, dz);
+        sendAttackerMotion(user);
+    }
+
+    /**
+     * 按仰角计算本次突进的总速度。
+     *
+     * <p>3 级时严格为 {@code 1.95 - 仰角 / 150}；其他等级按等级等比例缩放：
+     * {@code speed = baseSpeed - 仰角 * (baseSpeed / 1.95) / 150}。
+     * 仰角取视线向上与水平面的夹角（0~90°）；向下走原本的纯水平突进，不调用此方法。</p>
+     */
+    private static double lungeSpeed(double lookY, double baseSpeed, int lungeLevel) {
+        double elevation = Math.toDegrees(Math.asin(Math.min(1.0D, lookY)));
+        double penalty = LUNGE_ELEVATION_PENALTY * ((double) lungeLevel / 3.0D);
+        return Math.max(0.0D, baseSpeed - elevation * penalty);
+    }
+
+    /**
+     * 向上戳刺的耐久倍率：{@code max(1, floor(仰角 / 25))}。
+     *
+     * <p>0~24° → 1，25~49° → 1，50~74° → 2，75~90° → 3；
+     * 平视和向下固定为 1。</p>
+     */
+    private static int upwardDurabilityMultiplier(double lookY) {
+        if (lookY <= 0.0D) {
+            return 1;
+        }
+        double elevation = Math.toDegrees(Math.asin(Math.min(1.0D, lookY)));
+        return Math.max(1, (int) (elevation / DURABILITY_ELEVATION_STEP));
+    }
+
+    /**
+     * 把这次戳刺原本消耗的耐久放大到 {@link #upwardDurabilityMultiplier(double)} 倍。
+     *
+     * <p>父类已经在命中/突进时扣过 1 倍耐久，这里只补
+     * {@code 原本消耗 × (倍率 - 1)}。倍率对“命中耐久 + 突进耐久”一起生效。</p>
+     */
+    private void applyElevationDurabilityCost(LivingEntity user, ItemStack stack, EquipmentSlot slot,
+                                              int damageBefore, int damageAfterBase) {
+        int baseCost = damageAfterBase - damageBefore;
+        if (baseCost <= 0) {
+            return;
+        }
+        int multiplier = upwardDurabilityMultiplier(user.getLookAngle().y);
+        if (multiplier <= 1) {
+            return;
+        }
+        stack.hurtAndBreak(baseCost * (multiplier - 1), user, slot);
+    }
+
+    /** 与父类 jerotesLungeForwardMaybe 相同的突进音效选择。 */
+    private static void playLungeSound(LivingEntity user, int lungeLevel) {
+        SoundEvent sound = SpearSounds.ITEM_SPEAR_LUNGE_1.get();
+        if (lungeLevel > 1) {
+            sound = SpearSounds.ITEM_SPEAR_LUNGE_2.get();
+        }
+        if (lungeLevel > 2) {
+            sound = SpearSounds.ITEM_SPEAR_LUNGE_3.get();
+        }
+        user.level().playSound(null, user.getX(), user.getY(), user.getZ(),
+                sound, user.getSoundSource(), 1.0F, 1.0F);
+    }
+
+    /** 突进由服务端结算：把新速度同步给攻击者，避免客户端按旧速度预测并被拉回。 */
+    private static void sendAttackerMotion(LivingEntity user) {
+        if (user instanceof ServerPlayer serverPlayer && serverPlayer.connection != null) {
+            serverPlayer.connection.send(new ClientboundSetEntityMotionPacket(serverPlayer));
+        }
     }
 
     // ========== 核心：融合重锤机制 ==========
@@ -333,7 +505,15 @@ public class HeavySpearItem extends SpearItem {
     @Override
     public boolean performStabAttack(LivingEntity attacker, ItemStack stack, EquipmentSlot slot, boolean playSound) {
         if (!(attacker instanceof Player player)) {
-            return super.performStabAttack(attacker, stack, slot, playSound);
+            boolean ready = !attacker.level().isClientSide && !stack.isEmpty() && stack.getItem() == this;
+            int damageBefore = stack.getDamageValue();
+            boolean hitSomething = super.performStabAttack(attacker, stack, slot, playSound);
+            int damageAfterBase = stack.getDamageValue();
+            if (ready) {
+                applyLungeExtension(attacker);
+                applyElevationDurabilityCost(attacker, stack, slot, damageBefore, damageAfterBase);
+            }
+            return hitSomething;
         }
 
         // 刷新缓存（若还在坠落中会覆盖为最新值；已落地则保留宽限期内的缓存）
@@ -341,7 +521,18 @@ public class HeavySpearItem extends SpearItem {
         float fallDistance = getCachedFallDistance(player);
 
         if (!canSmash(player, fallDistance)) {
-            return super.performStabAttack(attacker, stack, slot, playSound);
+            boolean ready = !attacker.level().isClientSide
+                    && !stack.isEmpty()
+                    && stack.getItem() == this
+                    && SpearItem.canPlayerPerformStab(player, this);
+            int damageBefore = stack.getDamageValue();
+            boolean hitSomething = super.performStabAttack(attacker, stack, slot, playSound);
+            int damageAfterBase = stack.getDamageValue();
+            if (ready) {
+                applyLungeExtension(attacker);
+                applyElevationDurabilityCost(attacker, stack, slot, damageBefore, damageAfterBase);
+            }
+            return hitSomething;
         }
 
         Level level = attacker.level();
@@ -425,6 +616,7 @@ public class HeavySpearItem extends SpearItem {
     public void attack(LivingEntity attacker, EquipmentSlot slot) {
         if (!(attacker instanceof Player player)) {
             super.attack(attacker, slot);
+            applyLungeExtension(attacker);
             return;
         }
 
@@ -433,6 +625,7 @@ public class HeavySpearItem extends SpearItem {
 
         if (!canSmash(player, fallDistance)) {
             super.attack(attacker, slot);
+            applyLungeExtension(attacker);
             return;
         }
 

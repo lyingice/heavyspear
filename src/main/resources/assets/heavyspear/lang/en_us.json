@@ -1,3 +1,7 @@
 {
-  "item.heavyspear.heavy_spear": "Heavy Spear"
+  "item.heavyspear.heavy_spear": "Heavy Spear",
+  "hud.heavyspear.elytra_accel": "Elytra Boost %ss",
+  "hud.heavyspear.speed": "  %s m/s",
+  "hud.heavyspear.edit_hint": "Drag to move; release to save; Right Shift + Right Ctrl resets",
+  "hud.heavyspear.reset_hint": "Reset to top-right; release Right Shift to finish"
 }
