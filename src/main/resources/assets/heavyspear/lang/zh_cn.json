@@ -1,3 +1,7 @@
 {
-  "item.heavyspear.heavy_spear": "重矛"
+  "item.heavyspear.heavy_spear": "重矛",
+  "hud.heavyspear.elytra_accel": "鞘翅加速 %ss",
+  "hud.heavyspear.speed": "  %s m/s",
+  "hud.heavyspear.edit_hint": "拖动调整；松开保存；右Shift + 右Ctrl 重置",
+  "hud.heavyspear.reset_hint": "已重置到右上角，松开右Shift 完成"
 }
